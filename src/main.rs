@@ -16,7 +16,7 @@ struct HttpResponseHtmlServer {
     body: String,
 }
 
-async fn render_page(message: String) -> impl warp::Reply {
+fn render_page(message: String) -> impl warp::Reply {
     let template = HttpResponseHtmlServer {
         body: format!("Message: {}", message),
     };
@@ -26,7 +26,6 @@ async fn render_page(message: String) -> impl warp::Reply {
 #[tokio::main]
 async fn main() {
     let (tx, rx) = broadcast::channel::<String>(64);
-
     let rx = Arc::new(Mutex::new(rx));
     let rx_http = Arc::clone(&rx);
     tokio::join!(init_server_tcp(tx.clone(), rx), init_server_http(rx_http));
@@ -37,9 +36,11 @@ async fn init_server_http(rx: Arc<Mutex<broadcast::Receiver<String>>>) {
         let addr: SocketAddr = "127.0.0.1:8081".parse().unwrap();
         let routes = warp::any().map(move || Arc::clone(&rx)).and_then(
             |rx: Arc<Mutex<broadcast::Receiver<String>>>| async move {
-                let mut rx = rx.lock().await;
-                let message = rx.recv().await.unwrap_or_else(|_| "Nada ainda".to_string());
-                Ok::<_, warp::Rejection>(render_page(message).await)
+                loop {
+                    let mut rx = rx.lock().await;
+                    let message = rx.recv().await.unwrap_or_else(|_| "Nada ainda".to_string());
+                    return Ok::<_, warp::Rejection>(render_page(message));
+                }
             },
         );
 
@@ -89,10 +90,9 @@ async fn input_task(tx_clone: broadcast::Sender<String>) {
     loop {
         if let Some(line) = reader_line.next() {
             let input = line.unwrap();
-            if input.is_empty() {
-                println!("Entrou aqui");
+            if input.eq("stop") {
+                println!("Parando servidor");
                 tx_clone.send("stop".to_string()).unwrap();
-                break;
             }
             tx_clone.send(input).unwrap();
         }
