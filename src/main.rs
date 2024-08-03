@@ -10,8 +10,6 @@ use tokio::{
 };
 use warp::Filter;
 
-mod client;
-
 #[derive(Template)]
 #[template(path = "index.html")]
 struct HttpResponseHtmlServer {
